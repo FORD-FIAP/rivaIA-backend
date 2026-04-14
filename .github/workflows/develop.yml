@@ -1,0 +1,47 @@
+name: CI/CD - Develop
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build com Maven
+        run: mvn clean package -DskipTests
+
+      - name: Criar application-dev.properties
+        run: |
+          cat > src/main/resources/application-dev.properties <<EOF
+          server.port=8080
+          spring.datasource.url=jdbc:postgresql://${{ secrets.DEV_DB_HOST }}:${{ secrets.DEV_DB_PORT }}/riva_dev
+          spring.datasource.username=${{ secrets.DEV_DB_USER }}
+          spring.datasource.password=${{ secrets.DEV_DB_PASSWORD }}
+          spring.datasource.driver-class-name=org.postgresql.Driver
+          spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+          spring.jpa.hibernate.ddl-auto=update
+          spring.jpa.show-sql=true
+          EOF
+
+      - name: Deploy no servidor de homologação
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          script: |
+            cd /app/riva-backend
+            java -jar riva-backend.jar --spring.profiles.active=dev
