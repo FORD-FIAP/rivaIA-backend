@@ -52,6 +52,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- H2 (apenas testes) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Spring Security -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
