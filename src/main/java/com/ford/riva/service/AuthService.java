@@ -1,5 +1,6 @@
 package com.ford.riva.service;
 
+import com.ford.riva.crypto.EmailHasher;
 import com.ford.riva.dto.auth.LoginRequest;
 import com.ford.riva.dto.auth.RefreshTokenRequest;
 import com.ford.riva.dto.auth.RegisterRequest;
@@ -30,19 +31,22 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthenticationManager authenticationManager;
+    private final EmailHasher emailHasher;
 
     @Transactional
     public TokenResponse register(RegisterRequest request) {
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new IllegalArgumentException("Username já está em uso");
         }
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String emailHash = emailHasher.hash(request.getEmail());
+        if (userRepository.existsByEmailHash(emailHash)) {
             throw new IllegalArgumentException("Email já está em uso");
         }
 
         User user = User.builder()
                 .username(request.getUsername())
                 .email(request.getEmail())
+                .emailHash(emailHash)
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(Role.USER)
                 .enabled(true)

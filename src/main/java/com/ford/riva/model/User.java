@@ -1,6 +1,7 @@
 package com.ford.riva.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.ford.riva.crypto.AesEncryptor;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,7 +13,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "users", uniqueConstraints = {
         @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
-        @UniqueConstraint(name = "uk_users_email", columnNames = "email")
+        @UniqueConstraint(name = "uk_users_email_hash", columnNames = "email_hash")
 })
 @Data
 @Builder
@@ -28,8 +29,12 @@ public class User {
     @Column(name = "username", nullable = false, length = 50)
     private String username;
 
-    @Column(name = "email", nullable = false, length = 150)
+    @Convert(converter = AesEncryptor.class)
+    @Column(name = "email", nullable = false, length = 500)
     private String email;
+
+    @Column(name = "email_hash", nullable = false, length = 64)
+    private String emailHash;
 
     @JsonIgnore
     @Column(name = "password_hash", nullable = false, length = 255)
