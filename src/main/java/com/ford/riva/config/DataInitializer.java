@@ -1,5 +1,6 @@
 package com.ford.riva.config;
 
+import com.ford.riva.crypto.EmailHasher;
 import com.ford.riva.model.Role;
 import com.ford.riva.model.User;
 import com.ford.riva.repository.UserRepository;
@@ -20,6 +21,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailHasher emailHasher;
 
     @Value("${admin.default.password}")
     private String defaultAdminPassword;
@@ -33,6 +35,7 @@ public class DataInitializer implements CommandLineRunner {
         User admin = User.builder()
                 .username(DEFAULT_ADMIN_USERNAME)
                 .email(DEFAULT_ADMIN_EMAIL)
+                .emailHash(emailHasher.hash(DEFAULT_ADMIN_EMAIL))
                 .password(passwordEncoder.encode(defaultAdminPassword))
                 .role(Role.ADMIN)
                 .enabled(true)
