@@ -3,6 +3,9 @@ target/
 *.jar
 *.war
 *.ear
+.mvn/
+mvnw
+mvnw.cmd
 
 # Variaveis de ambiente
 .env
@@ -23,6 +26,9 @@ target/
 
 # VS Code
 .vscode/
+
+# Claude Code (local AI assistant config)
+.claude/
 
 # Spring Boot
 spring-shell.log
