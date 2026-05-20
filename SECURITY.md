@@ -85,34 +85,83 @@ Stack trace completo só vai pro **log interno** (nível ERROR). Resposta ao cli
 
 ## 4. Rate limiting
 
-*(A ser implementado no Bloco 3 — `RateLimitFilter` com Bucket4j)*
+Implementado com **Bucket4j** (algoritmo token bucket) em
+[security/filter/RateLimitFilter.java](src/main/java/com/ford/riva/security/filter/RateLimitFilter.java).
 
-Plano:
-- 60 req/min/IP em endpoints gerais
-- 10 req/min/IP em `/api/v1/auth/login` (anti brute-force)
-- 429 com header `Retry-After` quando excedido
+### Limites
+
+| Escopo | Limite | Motivo |
+|---|---|---|
+| Endpoints gerais | 60 req/min por IP | Proteção contra flooding/DoS leve |
+| `POST /api/v1/auth/login` | 10 req/min por IP | Proteção anti brute-force de senha |
+
+### Funcionamento
+
+- Um `Bucket` por IP, armazenado em `ConcurrentHashMap<String, Bucket>` (buckets
+  separados para tráfego geral e para login).
+- IP resolvido considerando o header `X-Forwarded-For` (suporte a proxy reverso).
+- Refill **greedy**: tokens reabastecem continuamente ao longo do minuto.
+- Requests `OPTIONS` (preflight CORS) não são contabilizadas.
+- Ao exceder o limite: resposta **429 Too Many Requests** com:
+  - Body `ApiErrorResponse` padronizado
+  - Header `Retry-After` com os segundos até liberar
+- Header `X-Rate-Limit-Remaining` exposto nas respostas bem-sucedidas.
+- **Monitoramento**: ao atingir 80% do limite, registra log `WARN` com o IP.
+
+Configurável via `rate-limit.general.requests-per-minute` e
+`rate-limit.auth.requests-per-minute`.
 
 ---
 
 ## 5. CORS
 
-*(A ser implementado no Bloco 3)*
+Configurado no `SecurityConfig` via `CorsConfigurationSource`.
 
-Plano:
-- `allowedOrigins`: `http://localhost:3000`, `http://localhost:8081` (Expo),
-  produção via `CORS_ALLOWED_ORIGINS`
-- `allowedMethods`: GET, POST, PUT, DELETE, OPTIONS
-- `allowedHeaders`: `Authorization`, `Content-Type`, `X-Signature`
-- `allowCredentials`: true
-- `maxAge`: 3600
+| Parâmetro | Valor |
+|---|---|
+| `allowedOrigins` | `http://localhost:3000`, `http://localhost:8081` (Expo), + produção via `CORS_ALLOWED_ORIGINS` |
+| `allowedMethods` | GET, POST, PUT, DELETE, OPTIONS |
+| `allowedHeaders` | `Authorization`, `Content-Type`, `X-Signature` |
+| `allowCredentials` | `true` |
+| `maxAge` | 3600s (1h de cache do preflight) |
+
+Requisições de origens não listadas têm o preflight **rejeitado** (403).
+A lista de origens é externalizada — em produção, definir `CORS_ALLOWED_ORIGINS`
+como CSV (ex: `https://riva.app,https://admin.riva.app`).
 
 ---
 
 ## 6. Integridade de payloads (HMAC)
 
-*(A ser implementado no Bloco 3 — `PayloadIntegrityFilter`)*
+Implementado em
+[security/filter/PayloadIntegrityFilter.java](src/main/java/com/ford/riva/security/filter/PayloadIntegrityFilter.java).
 
-Plano: verificação de header `X-Signature` com HMAC-SHA256 em requests POST/PUT.
+### Fluxo
+
+1. Cliente calcula `X-Signature = Base64(HMAC-SHA256(corpo_da_requisição, segredo))`.
+2. Envia a assinatura no header `X-Signature` em requisições `POST` e `PUT`.
+3. O filtro recalcula o HMAC sobre o corpo recebido e compara.
+4. Comparação em **tempo constante** (`MessageDigest.isEqual`) — resistente a timing attack.
+5. Assinatura ausente ou divergente → **403 Forbidden**.
+
+O corpo da requisição é bufferizado por `CachedBodyHttpServletRequest`, permitindo
+que o filtro leia o body para validação **e** o controller leia novamente depois.
+
+Garante que o payload não foi adulterado em trânsito (defesa adicional ao TLS,
+útil contra proxies/man-in-the-middle comprometidos).
+
+- **Dev**: desabilitado por default (`security.hmac.enabled=false`).
+- **Produção**: ativar com `HMAC_ENABLED=true` e definir `HMAC_SECRET`.
+
+### Ordem dos filtros de segurança
+
+```
+RateLimitFilter → JwtAuthenticationFilter → PayloadIntegrityFilter
+```
+
+(O `MdcFilter` do Bloco 5 entrará antes de todos.) Os filtros são registrados
+apenas dentro da `SecurityFilterChain` — o auto-registro como servlet filter
+global é desativado via `FilterRegistrationBean` com `setEnabled(false)`.
 
 ---
 
