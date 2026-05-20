@@ -3,8 +3,9 @@
 Documento de referência da camada de segurança implementada no `riva-backend`.
 Cobre o escopo da disciplina de **Cybersecurity** do Ford+FIAP 2026 Challenge.
 
-> **Status:** seções 2 (Auth), 3 (Validação) e 7–8 (Crypto + LGPD) implementadas.
-> Rate limiting, CORS, HMAC payload e logging estruturado serão adicionados nos blocos seguintes.
+> **Status:** todas as seções implementadas — autenticação/RBAC, validação,
+> rate limiting, CORS, integridade de payload, criptografia em repouso, LGPD,
+> logging estruturado e trilha de auditoria.
 
 ---
 
@@ -268,27 +269,81 @@ e relacionamentos com outras entidades (compliance LGPD + rastreabilidade).
 
 ## 9. Logging e auditoria
 
-*(A ser implementado no Bloco 5)*
+### Logging estruturado
 
-Plano:
-- Logback com `LogstashEncoder` (JSON) em produção
-- `MdcFilter` popula `client_ip`, `user_id`, `trace_id`
-- Entidade `AuditLog` registra: login sucesso/falha, registro, alteração de papel,
-  consultas de veículos
-- Logs **nunca** contêm senha, token JWT, dados pessoais
+Configurado em [logback-spring.xml](src/main/resources/logback-spring.xml):
+
+- **Dev / test**: saída legível no console, com os campos do MDC visíveis.
+- **Produção**: saída **JSON estruturada** via `LogstashEncoder`, pronta para
+  ingestão em ELK/Datadog/CloudWatch.
+
+Campos em cada log de produção: `timestamp`, `level`, `logger_name`, `message`,
+`thread_name`, além dos campos de correlação do MDC: `trace_id`, `user_id`, `client_ip`.
+
+### MDC (correlação de requisições)
+
+[security/filter/MdcFilter.java](src/main/java/com/ford/riva/security/filter/MdcFilter.java)
+é o **primeiro filtro** da cadeia. A cada requisição:
+
+- Gera um `trace_id` (UUID curto) para correlacionar todos os logs do request.
+- Extrai o `client_ip` (considerando `X-Forwarded-For`).
+- O `user_id` é adicionado ao MDC pelo `JwtAuthenticationFilter` assim que o
+  usuário é autenticado.
+- Limpa o MDC no `finally` — sem vazamento entre threads do pool.
+
+### Dados sensíveis nos logs
+
+- **Senhas**: nunca logadas (nem em texto, nem hash).
+- **Tokens JWT**: nunca logados.
+- **Dados pessoais**: apenas o `username` aparece em logs de evento; e-mail e
+  outros dados pessoais não são logados.
+
+### Trilha de auditoria
+
+[model/AuditLog.java](src/main/java/com/ford/riva/model/AuditLog.java) +
+[service/AuditService.java](src/main/java/com/ford/riva/service/AuditService.java).
+
+Cada entrada registra: `timestamp`, `userId`, `action`, `resource`, `ipAddress`, `details`.
+Ações (`AuditAction`): `LOGIN`, `LOGIN_FAILED`, `LOGOUT`, `USER_CREATED`,
+`USER_UPDATED`, `USER_DELETED`, `CONFIG_CHANGED`, `MASS_QUERY`.
+
+O `AuditService.log()` roda em transação **independente** (`REQUIRES_NEW`) — a
+trilha persiste mesmo que a operação de negócio falhe (ex.: `LOGIN_FAILED` é
+gravado mesmo com a autenticação lançando exceção).
+
+Pontos instrumentados atualmente:
+
+| Evento | Ação registrada |
+|---|---|
+| Registro de usuário | `USER_CREATED` |
+| Login bem-sucedido | `LOGIN` |
+| Login falho | `LOGIN_FAILED` |
+| Anonimização (LGPD) | `USER_DELETED` |
+
+> Os controllers de veículos (responsabilidade de outros membros do time) devem
+> chamar `auditService.log(AuditAction.MASS_QUERY, ...)` nas consultas.
 
 ---
 
 ## 10. Monitoramento de eventos suspeitos
 
-*(A ser implementado no Bloco 5)*
+| Regra | Onde | Nível |
+|---|---|---|
+| 5+ falhas de login do mesmo IP em 5 min | `AuthService` + `LoginAttemptService` | **ERROR** "Possível brute force detectado" |
+| Cada falha de login isolada | `AuthService` | WARN (com IP) |
+| IP atinge 80% do rate limit | `RateLimitFilter` | WARN |
+| Rate limit excedido | `RateLimitFilter` | WARN |
+| Assinatura HMAC inválida | `PayloadIntegrityFilter` | WARN |
+| 404 em endpoint inexistente (possível scan) | `GlobalExceptionHandler` | WARN (método + URL) |
+| Acesso não autenticado / negado | `JwtAuthenticationEntryPoint` / `JwtAccessDeniedHandler` | WARN |
 
-Plano:
-- 5+ falhas de login de mesmo IP em 5 min → log ERROR "possível brute force"
-- IP atinge 80% do rate limit → log WARN
-- 404 em endpoints inexistentes → log WARN com método + URL (detecção de scan)
+### Detecção de brute force
 
-Já parcialmente implementado: o `GlobalExceptionHandler` já loga 404s e falhas de auth.
+[service/LoginAttemptService.java](src/main/java/com/ford/riva/service/LoginAttemptService.java)
+mantém, por IP, uma janela deslizante de 5 minutos das falhas de login. Ao atingir
+**5 falhas**, o `AuthService` emite log `ERROR`. Um login bem-sucedido reseta o
+contador do IP. A estrutura é um `ConcurrentHashMap<String, Deque<Instant>>` com
+expurgo automático das entradas fora da janela.
 
 ---
 
@@ -301,8 +356,9 @@ Já parcialmente implementado: o `GlobalExceptionHandler` já loga 404s e falhas
 | `EMAIL_HASH_SECRET` | **Sim** (prod) | Secret HMAC-SHA256 para blind index do email. Mínimo 32 chars. |
 | `ADMIN_DEFAULT_PASSWORD` | **Sim** (prod) | Senha do admin default criado no primeiro start. **Trocar imediatamente após o primeiro login.** |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` | **Sim** (prod) | Conexão PostgreSQL Azure |
-| `CORS_ALLOWED_ORIGINS` | Recomendada | Lista CSV de origens permitidas em CORS. *(Bloco 3)* |
-| `HMAC_SECRET` | Recomendada | Secret para validação de payload com `X-Signature`. *(Bloco 3)* |
+| `CORS_ALLOWED_ORIGINS` | Recomendada | Lista CSV de origens permitidas em CORS. |
+| `HMAC_ENABLED` | Recomendada (prod) | `true` para exigir assinatura `X-Signature` em POST/PUT. |
+| `HMAC_SECRET` | Se `HMAC_ENABLED=true` | Secret HMAC-SHA256 para validação de integridade de payload. Mínimo 32 chars. |
 | `SSL_KEYSTORE_PASSWORD` | Apenas se HTTPS via Spring | Senha do keystore PKCS12 |
 
 **IMPORTANTE:** os valores em [application.properties](src/main/resources/application.properties)
@@ -362,9 +418,24 @@ CREATE TABLE users (
 );
 
 CREATE INDEX idx_users_email_hash ON users(email_hash);
+
+CREATE TABLE audit_logs (
+    audit_log_id  BIGSERIAL PRIMARY KEY,
+    timestamp     TIMESTAMP    NOT NULL,
+    user_id       VARCHAR(50),
+    action        VARCHAR(30)  NOT NULL,
+    resource      VARCHAR(200),
+    ip_address    VARCHAR(45),
+    details       VARCHAR(500)
+);
+
+CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action);
 ```
 
 Notas:
 - `email` é VARCHAR(500) porque AES-GCM + Base64 expande o tamanho do plaintext.
 - `email_hash` tem `UNIQUE` para enforcement de unicidade no nível do banco.
 - `password_hash` é VARCHAR(255) para acomodar BCrypt e marcador `{DELETED}` da anonimização.
+- `audit_logs.ip_address` é VARCHAR(45) para comportar endereços IPv6.
+- `audit_logs.user_id` é nullable — ações anônimas (ex.: login falho) não têm usuário.

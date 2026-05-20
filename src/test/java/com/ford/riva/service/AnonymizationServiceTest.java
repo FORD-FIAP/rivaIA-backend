@@ -27,13 +27,16 @@ class AnonymizationServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private AuditService auditService;
+
     private EmailHasher emailHasher;
     private AnonymizationService service;
 
     @BeforeEach
     void setUp() {
         emailHasher = new EmailHasher("testEmailHashSecretAtLeast32CharsLong!");
-        service = new AnonymizationService(userRepository, emailHasher);
+        service = new AnonymizationService(userRepository, emailHasher, auditService);
     }
 
     private User sampleUser(Long id) {

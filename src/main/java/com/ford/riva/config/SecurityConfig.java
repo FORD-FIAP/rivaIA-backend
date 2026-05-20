@@ -2,6 +2,7 @@ package com.ford.riva.config;
 
 import com.ford.riva.security.JwtAccessDeniedHandler;
 import com.ford.riva.security.JwtAuthenticationEntryPoint;
+import com.ford.riva.security.filter.MdcFilter;
 import com.ford.riva.security.filter.PayloadIntegrityFilter;
 import com.ford.riva.security.filter.RateLimitFilter;
 import com.ford.riva.security.jwt.JwtAuthenticationFilter;
@@ -38,6 +39,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    private final MdcFilter mdcFilter;
     private final RateLimitFilter rateLimitFilter;
     private final PayloadIntegrityFilter payloadIntegrityFilter;
 
@@ -75,11 +77,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/vehicles/**").hasAnyRole("ADMIN", "ANALYST")
                         .anyRequest().authenticated()
                 )
-                // Ordem dos filtros: RateLimitFilter -> JwtAuthenticationFilter -> PayloadIntegrityFilter.
-                // O JwtAuthenticationFilter é registrado primeiro para que sua ordem fique
-                // conhecida e possa servir de âncora para os outros dois.
+                // Ordem dos filtros: MdcFilter -> RateLimitFilter -> JwtAuthenticationFilter -> PayloadIntegrityFilter.
+                // Cada filtro custom é registrado antes de ser usado como âncora dos seguintes.
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(rateLimitFilter, JwtAuthenticationFilter.class)
+                .addFilterBefore(mdcFilter, RateLimitFilter.class)
                 .addFilterAfter(payloadIntegrityFilter, JwtAuthenticationFilter.class);
 
         return http.build();
@@ -121,6 +123,13 @@ public class SecurityConfig {
     public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration(
             JwtAuthenticationFilter filter) {
         FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<MdcFilter> mdcFilterRegistration(MdcFilter filter) {
+        FilterRegistrationBean<MdcFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setEnabled(false);
         return registration;
     }
