@@ -1,0 +1,481 @@
+{
+  "info": {
+    "name": "RIVA Backend - Cybersecurity Sprint",
+    "description": "Validacao manual dos 5 blocos de seguranca do riva-backend.\n\nPRE-REQUISITO: subir o servidor com:\n  ./mvnw.cmd spring-boot:test-run \"-Dspring-boot.run.profiles=test\"\n\nRode os requests na ordem (de cima para baixo). Os tokens sao salvos automaticamente.\nO banco e H2 em memoria: reiniciar o servidor zera os dados.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "testUser", "value": "" },
+    { "key": "userToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "refreshToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Bloco 1 - Validacao e Sanitizacao",
+      "item": [
+        {
+          "name": "XSS no username (espera 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Bloqueado com 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Nao vaza stack trace', () => pm.expect(pm.response.text()).to.not.include('Exception'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"<script>alert(1)</script>\",\"email\":\"hacker1@example.com\",\"password\":\"Senha123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Tenta cadastrar com tag <script> no username. A whitelist @Pattern + @SafeText bloqueia."
+          }
+        },
+        {
+          "name": "SQL injection no username (espera 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Bloqueado com 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"admin'; DROP TABLE users;--\",\"email\":\"hacker2@example.com\",\"password\":\"Senha123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Payload de SQL injection no username e rejeitado pela validacao."
+          }
+        },
+        {
+          "name": "Email invalido (espera 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Bloqueado com 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Tem mapa de erros por campo', () => pm.expect(pm.response.json()).to.have.property('errors'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"userteste\",\"email\":\"isso-nao-e-email\",\"password\":\"Senha123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Email em formato invalido e rejeitado por @Email."
+          }
+        },
+        {
+          "name": "JSON malformado (espera 400, nao 500)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Bloqueado com 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{isso nao e json valido}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Corpo malformado cai no GlobalExceptionHandler como 400, nunca 500."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bloco 2 - Autenticacao e RBAC",
+      "item": [
+        {
+          "name": "1. Registrar usuario comum (USER)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('testUser', 'vitoka_' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Criado com 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('userToken', body.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "pm.test('Retornou access + refresh token', () => {",
+                  "  pm.expect(body.accessToken).to.be.a('string');",
+                  "  pm.expect(body.refreshToken).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{testUser}}\",\"email\":\"{{testUser}}@example.com\",\"password\":\"Senha123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Cria um usuario com role USER. Salva o token automaticamente."
+          }
+        },
+        {
+          "name": "2. Login admin (ADMIN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login OK 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('adminToken', pm.response.json().accessToken);",
+                  "pm.test('expiresIn = 1800s (30 min)', () => pm.expect(pm.response.json().expiresIn).to.eql(1800));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"admin\",\"password\":\"TestAdminPassword123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Loga com o admin criado automaticamente no start. Salva o adminToken."
+          }
+        },
+        {
+          "name": "3. Login com senha errada (espera 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejeitado com 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Mensagem generica', () => pm.expect(pm.response.json().message).to.eql('Credenciais invalidas'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"admin\",\"password\":\"senhaERRADA999\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Senha incorreta retorna 401 com mensagem generica."
+          }
+        },
+        {
+          "name": "4. Endpoint protegido SEM token (espera 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Bloqueado com 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/lista",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "lista"]
+            },
+            "description": "Sem token, qualquer rota protegida retorna 401 JSON."
+          }
+        },
+        {
+          "name": "5. USER tentando area de ADMIN (espera 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('RBAC bloqueia com 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Mensagem Acesso negado', () => pm.expect(pm.response.json().message).to.eql('Acesso negado'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{userToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teste",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teste"]
+            },
+            "description": "Token de USER nao acessa /admin/**. RBAC retorna 403."
+          }
+        },
+        {
+          "name": "6. ADMIN acessando area de ADMIN (espera 404 = passou RBAC)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Passou no RBAC (nao e 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "pm.test('404 = autorizado, mas endpoint nao existe', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teste",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teste"]
+            },
+            "description": "Token de ADMIN passa pelo RBAC. Da 404 porque o endpoint em si nao existe (sera criado pelos colegas)."
+          }
+        },
+        {
+          "name": "7. Refresh token (espera 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Renovou com 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retornou novo access token', () => pm.expect(pm.response.json().accessToken).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refreshToken\":\"{{refreshToken}}\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            },
+            "description": "Usa o refresh token salvo no request 1 para gerar um novo access token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bloco 3 - CORS",
+      "item": [
+        {
+          "name": "CORS origem permitida (localhost:3000)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Preflight aceito', () => pm.response.to.have.status(200));",
+                  "pm.test('Header Access-Control-Allow-Origin presente', () => {",
+                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:3000');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              { "key": "Origin", "value": "http://localhost:3000" },
+              { "key": "Access-Control-Request-Method", "value": "POST" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Preflight CORS de uma origem permitida. Retorna o header Access-Control-Allow-Origin."
+          }
+        },
+        {
+          "name": "CORS origem proibida (espera 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Origem maliciosa rejeitada', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              { "key": "Origin", "value": "http://site-malicioso.com" },
+              { "key": "Access-Control-Request-Method", "value": "POST" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Preflight de origem nao listada e rejeitado com 403."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bloco 4 - Protecao de Dados",
+      "item": [
+        {
+          "name": "Login - resposta NUNCA traz senha",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Resposta nao contem campo password', () => {",
+                  "  pm.expect(pm.response.text().toLowerCase()).to.not.include('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"admin\",\"password\":\"TestAdminPassword123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "O campo password tem @JsonIgnore - nunca aparece em resposta. A criptografia AES do email no banco e provada pelo teste automatizado EncryptionAtRestIntegrationTest."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bloco 5 - Logs e Auditoria",
+      "item": [
+        {
+          "name": "Login (gera trilha de auditoria)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login OK', () => pm.response.to.have.status(200));",
+                  "console.log('>> Agora olhe o TERMINAL do servidor:');",
+                  "console.log('>> deve aparecer a linha: Auditoria: action=LOGIN resource=/api/v1/auth/login');",
+                  "console.log('>> e todas as linhas tem [trace=... ip=... user=...] (MDC)');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"admin\",\"password\":\"TestAdminPassword123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Apos enviar, olhe o console do servidor: aparece 'Auditoria: action=LOGIN' (trilha de auditoria) e cada log tem trace_id/client_ip/user_id (MDC). A entrada vai para a tabela audit_logs."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- Dev e test: saída legível no console, com os campos do MDC visíveis. -->
+    <springProfile name="dev,test">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>
+                    %d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} [trace=%X{trace_id:-} ip=%X{client_ip:-} user=%X{user_id:-}] - %msg%n
+                </pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- Produção: saída JSON estruturada via LogstashEncoder, com os campos do MDC. -->
+    <springProfile name="prod">
+        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>trace_id</includeMdcKeyName>
+                <includeMdcKeyName>user_id</includeMdcKeyName>
+                <includeMdcKeyName>client_ip</includeMdcKeyName>
+                <fieldNames>
+                    <timestamp>timestamp</timestamp>
+                    <level>level</level>
+                    <logger>logger_name</logger>
+                    <message>message</message>
+                    <thread>thread_name</thread>
+                </fieldNames>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
+    </springProfile>
+
+</configuration>

@@ -1,0 +1,22 @@
+services:
+
+  # PostgreSQL para desenvolvimento local. A aplicacao roda fora do container.
+  db:
+    image: postgres:16
+    container_name: riva-db
+    environment:
+      POSTGRES_DB: riva_db
+      POSTGRES_USER: riva
+      POSTGRES_PASSWORD: riva
+    ports:
+      - "5432:5432"
+    volumes:
+      - riva-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U riva -d riva_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  riva-db-data:

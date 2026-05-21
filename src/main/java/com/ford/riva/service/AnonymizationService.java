@@ -1,6 +1,7 @@
 package com.ford.riva.service;
 
 import com.ford.riva.crypto.EmailHasher;
+import com.ford.riva.model.AuditAction;
 import com.ford.riva.model.User;
 import com.ford.riva.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -20,6 +21,7 @@ public class AnonymizationService {
 
     private final UserRepository userRepository;
     private final EmailHasher emailHasher;
+    private final AuditService auditService;
 
     @Transactional
     public void anonymizeUser(Long userId) {
@@ -36,5 +38,7 @@ public class AnonymizationService {
 
         userRepository.save(user);
         log.info("Usuário {} anonimizado (LGPD)", userId);
+        auditService.log(AuditAction.USER_DELETED, "/api/v1/users/" + userId,
+                "Usuário anonimizado conforme LGPD");
     }
 }

@@ -5,12 +5,15 @@ import com.ford.riva.dto.auth.LoginRequest;
 import com.ford.riva.dto.auth.RefreshTokenRequest;
 import com.ford.riva.dto.auth.RegisterRequest;
 import com.ford.riva.dto.auth.TokenResponse;
+import com.ford.riva.model.AuditAction;
 import com.ford.riva.model.Role;
 import com.ford.riva.model.User;
 import com.ford.riva.repository.UserRepository;
+import com.ford.riva.security.filter.MdcFilter;
 import com.ford.riva.security.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -26,12 +29,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private static final String TOKEN_TYPE_BEARER = "Bearer";
+    private static final String LOGIN_RESOURCE = "/api/v1/auth/login";
+    private static final String REGISTER_RESOURCE = "/api/v1/auth/register";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthenticationManager authenticationManager;
     private final EmailHasher emailHasher;
+    private final AuditService auditService;
+    private final LoginAttemptService loginAttemptService;
 
     @Transactional
     public TokenResponse register(RegisterRequest request) {
@@ -53,33 +60,34 @@ public class AuthService {
                 .build();
 
         userRepository.save(user);
+        MDC.put(MdcFilter.USER_ID, user.getUsername());
         log.info("Usuário registrado: {}", user.getUsername());
+        auditService.log(AuditAction.USER_CREATED, REGISTER_RESOURCE, "username=" + user.getUsername());
 
         return buildTokens(user.getUsername(), user.getRole());
     }
 
     public TokenResponse login(LoginRequest request) {
+        String clientIp = MDC.get(MdcFilter.CLIENT_IP);
         try {
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getUsername(), request.getPassword()
                     )
             );
-        } catch (BadCredentialsException ex) {
-            log.warn("Falha de login para username='{}': credenciais inválidas", request.getUsername());
-            throw ex;
-        } catch (DisabledException ex) {
-            log.warn("Falha de login para username='{}': conta desabilitada", request.getUsername());
-            throw ex;
         } catch (AuthenticationException ex) {
-            log.warn("Falha de login para username='{}': {}", request.getUsername(), ex.getClass().getSimpleName());
+            handleFailedLogin(request.getUsername(), clientIp, ex);
             throw ex;
         }
 
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new BadCredentialsException("Credenciais inválidas"));
 
+        loginAttemptService.reset(clientIp);
+        MDC.put(MdcFilter.USER_ID, user.getUsername());
         log.info("Login realizado: {}", user.getUsername());
+        auditService.log(AuditAction.LOGIN, LOGIN_RESOURCE, "username=" + user.getUsername());
+
         return buildTokens(user.getUsername(), user.getRole());
     }
 
@@ -99,6 +107,18 @@ public class AuthService {
         }
 
         return buildTokens(user.getUsername(), user.getRole());
+    }
+
+    private void handleFailedLogin(String username, String clientIp, AuthenticationException ex) {
+        int failures = loginAttemptService.recordFailure(clientIp);
+        log.warn("Falha de login para username='{}' (IP={}, motivo={})",
+                username, clientIp, ex.getClass().getSimpleName());
+
+        if (failures >= loginAttemptService.getSuspiciousThreshold()) {
+            log.error("Possível brute force detectado: IP={} com {} falhas de login em 5 minutos",
+                    clientIp, failures);
+        }
+        auditService.log(AuditAction.LOGIN_FAILED, LOGIN_RESOURCE, "username=" + username);
     }
 
     private TokenResponse buildTokens(String username, Role role) {
