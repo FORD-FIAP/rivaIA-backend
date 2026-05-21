@@ -52,7 +52,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- H2 (apenas testes) -->
+        <!-- H2 — banco em memória, usado apenas nos testes (perfil test) -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

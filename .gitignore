@@ -1,16 +1,5 @@
 # Maven
 target/
-*.jar
-*.war
-*.ear
-.mvn/
-mvnw
-mvnw.cmd
-
-# Variaveis de ambiente
-.env
-*.env
-.env.*
 
 # IntelliJ IDEA
 .idea/
@@ -30,14 +19,15 @@ mvnw.cmd
 # Claude Code (local AI assistant config)
 .claude/
 
-# Spring Boot
-spring-shell.log
-src/main/resources/application-dev.properties
-src/main/resources/application-prod.properties
+# Variaveis de ambiente (secrets — nunca versionar)
+.env
+*.env
+.env.*
 
 # Logs
 *.log
 logs/
+spring-shell.log
 
 # OS
 .DS_Store
