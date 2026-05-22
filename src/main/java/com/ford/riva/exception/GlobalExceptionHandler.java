@@ -165,6 +165,27 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleResourceNotFound(
+            ResourceNotFoundException ex, HttpServletRequest request) {
+        log.warn("Recurso não encontrado em {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiErrorResponse> handleDuplicateResource(
+            DuplicateResourceException ex, HttpServletRequest request) {
+        log.warn("Recurso duplicado em {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalState(
+            IllegalStateException ex, HttpServletRequest request) {
+        log.warn("Estado inválido em {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI(), null);
+    }
+
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ApiErrorResponse> handleRateLimit(
             RateLimitExceededException ex, HttpServletRequest request) {
