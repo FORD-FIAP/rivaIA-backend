@@ -145,8 +145,9 @@ implementação está no **[SECURITY.md](SECURITY.md)**.
 
 ### Testar os endpoints
 
-O arquivo **`RIVA-Security.postman_collection.json`** (na raiz do repositório)
-é uma collection do Postman com requisições prontas para validar cada bloco —
+A suíte de testes automatizados (`mvnw.cmd test`) valida cada bloco de segurança,
 incluindo casos de ataque que devem ser bloqueados (XSS, SQL injection, acesso
-sem token, RBAC negado, CORS proibido). Importe no Postman e execute com a
-aplicação rodando.
+sem token, RBAC negado, CORS proibido).
+
+Para testar manualmente com a aplicação rodando, use a documentação interativa
+em **http://localhost:8080/swagger-ui.html**.
