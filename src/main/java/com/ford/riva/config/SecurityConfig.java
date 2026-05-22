@@ -72,9 +72,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/users/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/vehicles/**").hasAnyRole("ADMIN", "ANALYST")
+                        .requestMatchers("/api/v1/vehicles/**", "/api/v1/versions/**",
+                                "/api/v1/brands/**", "/api/v1/categories/**",
+                                "/api/v1/powertrains/**").hasAnyRole("ADMIN", "ANALYST")
                         .anyRequest().authenticated()
                 )
                 // Ordem dos filtros: MdcFilter -> RateLimitFilter -> JwtAuthenticationFilter -> PayloadIntegrityFilter.
