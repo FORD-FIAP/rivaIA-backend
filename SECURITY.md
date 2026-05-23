@@ -231,7 +231,7 @@ Coberto em [AesEncryptorTest.java](src/test/java/com/ford/riva/crypto/AesEncrypt
 | Access token (JWT) | 30 minutos | Expiração automática via claim `exp` |
 | Refresh token (JWT) | 7 dias | Expiração automática via claim `exp` |
 | Dados de usuário (`User`) | Enquanto conta ativa | Anonimização no soft-delete |
-| Logs de auditoria (`AuditLog`) | 90 dias | Job de anonimização programado (a implementar) |
+| Logs de auditoria (`AuditLog`) | 90 dias | Job `@Scheduled` diário ([AuditLogRetentionJob](src/main/java/com/ford/riva/service/AuditLogRetentionJob.java)) |
 | Dados de busca de veículos | Sem restrição | Não contém dados pessoais |
 
 ### Anonimização (LGPD Art. 18, V — direito à exclusão)
@@ -247,6 +247,51 @@ fornece `anonymizeUser(Long userId)` que substitui irrevogavelmente:
 
 A linha não é deletada para preservar **integridade referencial** com logs de auditoria
 e relacionamentos com outras entidades (compliance LGPD + rastreabilidade).
+
+### Descarte automático da trilha de auditoria
+
+[service/AuditLogRetentionJob.java](src/main/java/com/ford/riva/service/AuditLogRetentionJob.java)
+roda diariamente às **03:00** (horário de baixo tráfego) via `@Scheduled` e
+**anonimiza em bulk** todas as entradas `AuditLog` com `timestamp` anterior à
+janela de retenção (90 dias por default).
+
+A anonimização é feita por `UPDATE` em massa no nível do banco (não `DELETE`)
+para preservar a **contagem histórica** de eventos por ação — relevante para
+métricas agregadas e detecção de anomalias de longo prazo:
+
+- `user_id` → `NULL`
+- `ip_address` → `NULL`
+- `details` → `NULL`
+- `timestamp`, `action`, `resource` → **preservados** (não são dados pessoais)
+
+Configurável via `audit.retention.days` (janela) e `audit.retention.cron`
+(agendamento). Para desabilitar em ambientes de desenvolvimento, basta sobrescrever
+o cron para uma data improvável ou remover `@EnableScheduling`.
+
+### Pseudonimização para ML, BI e dashboards analíticos
+
+O edital exige que dados usados em **machine learning, dashboards e análises
+agregadas** sejam pseudonimizados — i.e., dissociados do titular real antes do
+processamento analítico. As medidas:
+
+| Uso analítico | Dado de entrada | Pseudonimização aplicada |
+|---|---|---|
+| Dashboards de uso (por usuário) | `User.id` | ID interno é um surrogate key — **não é PII**, não permite reidentificação fora do sistema |
+| Dashboards de comportamento (por email) | `User.email_hash` | HMAC-SHA256 com `EMAIL_HASH_SECRET` — determinístico, irreversível sem o segredo |
+| Modelos de ML sobre logs | `AuditLog` após retenção | `user_id` e `ip_address` já vêm `NULL` — restam timestamp, action, resource (não-pessoais) |
+| Export para BI externo (CSV/parquet) | `AuditLog` ativos (<90 dias) | Antes de exportar, substituir `user_id` por HMAC-SHA256(user_id, EXPORT_SECRET) e zerar `ip_address` |
+| Análise agregada (counts, taxas) | Qualquer | Operar sobre `COUNT(*) GROUP BY action, date_trunc('hour', timestamp)` — agregação remove identificabilidade |
+
+**Princípio de design:** o `email_hash` (blind index do Bloco 7) já cumpre duplo
+papel — viabiliza busca por igualdade em coluna criptografada **e** funciona como
+pseudônimo estável para joins analíticos sem expor o email real. Pipelines de BI
+devem consumir `email_hash`, nunca `email`.
+
+**Segregação de chave:** o `EMAIL_HASH_SECRET` usado em produção **não deve ser
+compartilhado** com o ambiente de BI/analytics. Idealmente, o export para
+analytics aplica uma segunda camada de HMAC (`EXPORT_SECRET`), de forma que
+mesmo um vazamento da chave de BI não permita correlacionar pseudônimos com
+usuários reais do sistema operacional.
 
 ### Direitos do titular dos dados (Lei 13.709/2018)
 
