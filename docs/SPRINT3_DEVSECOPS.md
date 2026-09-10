@@ -54,9 +54,9 @@ flowchart TD
             direction TB
             SECRET["1. Secret Scanning\nGitleaks (historico completo)"]
             SAST["2. SAST\nSemgrep (p/java, security-audit,\nsecrets, owasp-top-ten)"]
-            SCA["3. SCA\nOWASP Dependency-Check + Trivy fs\n(CVE em dependencias Maven)"]
+            SCA["3. SCA\nTrivy fs + OWASP Dependency-Check\n(CVE em dependencias Maven)"]
             IAC["4. IaC & Container Scan\nTrivy config (Dockerfile/compose/CI)\n+ Trivy image (CVE na imagem)"]
-            DREV["5. Dependency Review\n(bloqueia PR com dep vulneravel)"]
+            DREV["5. Dependency Review\n(alerta sobre dep vulneravel no PR)"]
         end
 
         BUILD --> SEC
@@ -83,10 +83,17 @@ flowchart TD
 |---|---|---|---|---|---|
 | 1 | **Secret Scanning** | Gitleaks 8.21 | Chaves, tokens, senhas no código e em **todo o histórico git** | *Information Disclosure*; A02:2021 (Cryptographic Failures); vazamento de `JWT_SECRET`/`AES_ENCRYPTION_KEY`/`DB_PASSWORD` | **Bloqueia** (`--exit-code 1`); falsos-positivos de dev tratados no [`.gitleaks.toml`](../.gitleaks.toml) |
 | 2 | **SAST** | Semgrep OSS (`p/java`, `p/security-audit`, `p/secrets`, `p/owasp-top-ten`) | Injection, cripto fraca, deserialização insegura, path traversal, uso incorreto de APIs Spring Security | *Tampering/Elevation*; A03:2021 (Injection), A02, A08 | Alerta + SARIF na aba Security (não bloqueia o merge; entra na triagem) |
-| 3 | **SCA** | OWASP Dependency-Check + Trivy `fs` | CVEs conhecidas nas dependências transitivas do Maven | *Elevation of Privilege*; A06:2021 (Vulnerable & Outdated Components) | Dependency-Check com `--failOnCVSS 7` (falha o job em CVE alta); Trivy redundante |
-| 4 | **IaC & Container Scan** | Trivy `config` + Trivy `image` | Dockerfile/compose/workflows inseguros; CVEs no SO-base da imagem | *Tampering*; A05:2021 (Security Misconfiguration) | Alerta + SARIF; revisão obrigatória se `CRITICAL` |
-| 5 | **Dependency Review** | `actions/dependency-review-action` | Dependência nova vulnerável ou com licença incompatível **introduzida no PR** | A06:2021; supply chain | **Bloqueia** PR em `fail-on-severity: high` |
+| 3 | **SCA** | Trivy `fs` (CLI) + OWASP Dependency-Check | CVEs conhecidas nas dependências transitivas do Maven | *Elevation of Privilege*; A06:2021 (Vulnerable & Outdated Components) | Relatório + SARIF (CRITICAL/HIGH); triagem humana |
+| 4 | **IaC & Container Scan** | Trivy `config` + Trivy `image` (CLI) | Dockerfile/compose/workflows inseguros; CVEs no SO-base da imagem | *Tampering*; A05:2021 (Security Misconfiguration) | Relatório + SARIF; revisão obrigatória se `CRITICAL` |
+| 5 | **Dependency Review** | `actions/dependency-review-action` (`warn-only`) | Dependência nova vulnerável ou com licença incompatível **introduzida no PR** | A06:2021; supply chain | Comentário/resumo no PR (requer *Dependency graph* habilitado em Settings → Security) |
 | — | **Dependabot** | GitHub nativo | Versões desatualizadas / advisories (Maven, Actions, Docker) | A06:2021; manutenção contínua | Abre PR automático semanal → passa pelo pipeline |
+
+> **Modo de operação:** o **Secret Scanning bloqueia** (segredo no repo é parada
+> obrigatória). Os demais scanners (SAST, SCA, IaC/Container, Dependency Review)
+> rodam em **modo informativo** nesta entrega — publicam achados (artifacts + aba
+> Security) e o gate é a **revisão humana**. Para virar gate automático depois,
+> remova os `continue-on-error` / `exit-code 0` dos jobs desejados e habilite
+> *Dependency graph* + *Code scanning* nas configurações do repositório.
 
 ## 1.3 Gatilhos, saídas e integração
 
@@ -104,15 +111,16 @@ flowchart TD
 ## 1.4 Como seria executado no projeto Ford
 
 1. Dev abre PR para `develop`. Rodam `CI - Develop` + `DevSecOps - Security Pipeline`.
-2. Gitleaks e Dependency Review **barram** o PR se houver segredo ou dependência vulnerável nova.
+2. Gitleaks sinaliza segredos; Dependency Review comenta dependências vulneráveis novas.
 3. Semgrep/SCA/Trivy publicam achados; o revisor tria (corrige agora / cria issue / risco aceito).
 4. Merge em `develop` → deploy automático em homologação.
 5. PR `develop → production` repete o pipeline; após aprovado, deploy em produção via SSH.
 6. Semanalmente: Dependabot abre PRs de atualização e o `security.yml` reexecuta a varredura completa.
 
 **Evidências a anexar:** print da aba *Actions* com os 5 jobs verdes; print da aba
-*Security → Code scanning*; print de um PR bloqueado pelo Dependency Review; screenshot
-dos artifacts (`gitleaks-report`, `semgrep-report`, `sca-reports`, `trivy-reports`).
+*Security → Code scanning* com os achados por categoria; print do resumo do
+Dependency Review no PR; screenshot dos artifacts (`gitleaks-report`,
+`semgrep-report`, `sca-reports`, `trivy-reports`) e de um relatório Trivy (`*.txt`).
 
 ---
 
@@ -279,7 +287,7 @@ Detalhado no [`SECURITY.md`](../SECURITY.md) §8. Resumo:
 | Quando | Ação | Responsável |
 |---|---|---|
 | Semanal (automático) | Dependabot abre PRs (Maven, Actions, Docker); `security.yml` roda SCA completo | CI |
-| A cada PR | Dependency Review bloqueia dependência vulnerável nova | CI + revisor |
+| A cada PR | Dependency Review comenta dependência vulnerável nova (warn-only) | CI + revisor |
 | Semanal (humano) | Triagem dos achados de SCA: classificar CVSS, alcançabilidade, exploit; agir ou registrar risco aceito com prazo | Responsável de segurança |
 | Release | Confirmar que não há CVE ≥ 7 pendente sem mitigação | Líder técnico |
 
@@ -330,7 +338,7 @@ Detalhado no [`SECURITY.md`](../SECURITY.md) §8. Resumo:
 | Pipeline | SAST em todo PR | ✅ | job `sast` |
 | Pipeline | SCA + Dependabot ativos | ✅ | job `sca` + `dependabot.yml` |
 | Pipeline | IaC e imagem escaneadas | ✅ | job `iac-container-scan` |
-| Pipeline | PR bloqueia dependência vulnerável | ✅ | job `dependency-review` |
+| Pipeline | PR sinaliza dependência vulnerável nova | ✅ | job `dependency-review` (warn-only) |
 | Código | Entrada validada e sanitizada (4 camadas) | ✅ | `InputSanitizer`, DTOs, 145 testes |
 | Código | AuthN JWT + AuthZ RBAC | ✅ | `security/**`, `SecurityConfig` |
 | Código | Cripto em repouso de PII | ✅ | `crypto/AesEncryptor` |
