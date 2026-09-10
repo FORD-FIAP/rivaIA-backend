@@ -141,8 +141,31 @@ Dependency Review no PR; screenshot dos artifacts (`gitleaks-report`,
 | **Actuator isolado** ⭐ | Em produção o Actuator sobe em **porta de gestão separada (9090)**; exposição reduzida a `health,info,prometheus`; `env/beans/heapdump/loggers` bloqueados | `application.properties`, `application-prod.properties`, `SecurityConfig.java` | **esta sprint** |
 | **Headers de erro/proxy** ⭐ | `server.error.include-stacktrace=never`, `include-message=never`; `forward-headers-strategy=native` + `remoteip` para IP real atrás do proxy | `application-prod.properties` | **esta sprint** |
 | **Log em arquivo JSON** ⭐ | Appender rotacionado (`riva-backend.json`, 50 MB × 7 dias, gzip) para ingestão pelo Loki | `logback-spring.xml` | **esta sprint** |
+| **Atualização de dependências** ⭐ | Correção guiada pelo SCA — ver §2.4 | `pom.xml` | **esta sprint** |
 
 ⭐ = mudança desta sprint. Ver o `git diff` da branch `feature/sprint3-devsecops`.
+
+### 2.4 Correção guiada pelo SCA — atualização de dependências
+
+Na primeira execução do pipeline, a etapa de **SCA (Trivy)** reprovou o PR com
+**~30 CVEs HIGH/CRITICAL** em dependências transitivas do Spring Boot **3.3.5**
+(Spring Framework, Spring Security, Tomcat embed, driver PostgreSQL, Spring Data
+Commons). Correção aplicada no [`pom.xml`](../pom.xml):
+
+| Componente | Antes | Depois | CVEs resolvidas (exemplos) |
+|---|---|---|---|
+| `spring-boot-starter-parent` | 3.3.5 | **3.5.16** | CVE-2026-40973 (RCE via tmp dir), CVE-2025-22235 |
+| `spring-webmvc` / `spring-expression` / `spring-core` (via BOM) | 6.1.14 | **6.2.19** | CVE-2026-41845 (XSS), CVE-2026-41842/41850 (DoS), CVE-2025-41249 |
+| `spring-security-web` / `-crypto` (via BOM) | 6.3.4 | **6.5.11** | **CVE-2026-22732 (CRITICAL — bypass de política de segurança)**, CVE-2025-22228 |
+| `spring-data-commons` (via BOM) | 3.3.5 | **3.5.13** | CVE-2026-41716 (DoS por exaustão de cache) |
+| `tomcat-embed-core` (`tomcat.version`) | 10.1.31 | **10.1.59** | **CVE-2024-50379 / CVE-2026-43515 / -65182 / -65905 / -68525 (CRITICAL)**, CVE-2025-55752 (dir traversal → RCE) e ~15 DoS/inf-disclosure |
+| `postgresql` (`postgresql.version`) | 42.7.4 | **42.7.12** | CVE-2026-54291 (MITM via downgrade SCRAM), CVE-2025-49146, CVE-2026-42198 |
+| `springdoc-openapi-starter-webmvc-ui` | 2.6.0 | **2.8.9** | compatibilidade com Spring Boot 3.5 |
+
+**Validação:** `./mvnw clean test` → **145/145 testes passando** após o upgrade
+(sem mudança de código de aplicação). O overlay de versões de `tomcat` e
+`postgresql` fica em `<properties>` do `pom.xml`, comentado como *override de
+segurança*, para o caso de o BOM ainda não ter alcançado a versão corrigida.
 
 ### Controle de acesso por perfil
 
