@@ -85,7 +85,7 @@ flowchart TD
 | 2 | **SAST** | Semgrep OSS (`p/java`, `p/security-audit`, `p/secrets`, `p/owasp-top-ten`) | Injection, cripto fraca, deserialização insegura, path traversal, uso incorreto de APIs Spring Security | *Tampering/Elevation*; A03:2021 (Injection), A02, A08 | Alerta + SARIF na aba Security (não bloqueia o merge; entra na triagem) |
 | 3 | **SCA** | Trivy `fs` (CLI) + OWASP Dependency-Check | CVEs conhecidas nas dependências transitivas do Maven | *Elevation of Privilege*; A06:2021 (Vulnerable & Outdated Components) | Relatório + SARIF (CRITICAL/HIGH); triagem humana |
 | 4 | **IaC & Container Scan** | Trivy `config` + Trivy `image` (CLI) | Dockerfile/compose/workflows inseguros; CVEs no SO-base da imagem | *Tampering*; A05:2021 (Security Misconfiguration) | Relatório + SARIF; revisão obrigatória se `CRITICAL` |
-| 5 | **Dependency Review** | `actions/dependency-review-action` (`warn-only`) | Dependência nova vulnerável ou com licença incompatível **introduzida no PR** | A06:2021; supply chain | Comentário/resumo no PR (requer *Dependency graph* habilitado em Settings → Security) |
+| 5 | **Dependency Review** | `actions/dependency-review-action` (`warn-only`) | Dependência nova vulnerável ou com licença incompatível **introduzida no PR** | A06:2021; supply chain | Comentário/resumo no PR — dormente até criar a variável de repo `ENABLE_DEPENDENCY_REVIEW=true` e habilitar *Dependency graph* em Settings → Code security |
 | — | **Dependabot** | GitHub nativo | Versões desatualizadas / advisories (Maven, Actions, Docker) | A06:2021; manutenção contínua | Abre PR automático semanal → passa pelo pipeline |
 
 > **Modo de operação:** o **Secret Scanning bloqueia** (segredo no repo é parada
@@ -111,13 +111,13 @@ flowchart TD
 ## 1.4 Como seria executado no projeto Ford
 
 1. Dev abre PR para `develop`. Rodam `CI - Develop` + `DevSecOps - Security Pipeline`.
-2. Gitleaks sinaliza segredos; Dependency Review comenta dependências vulneráveis novas.
+2. Gitleaks sinaliza segredos (bloqueia); Semgrep, SCA e Trivy publicam achados para triagem.
 3. Semgrep/SCA/Trivy publicam achados; o revisor tria (corrige agora / cria issue / risco aceito).
 4. Merge em `develop` → deploy automático em homologação.
 5. PR `develop → production` repete o pipeline; após aprovado, deploy em produção via SSH.
 6. Semanalmente: Dependabot abre PRs de atualização e o `security.yml` reexecuta a varredura completa.
 
-**Evidências a anexar:** print da aba *Actions* com os 5 jobs verdes; print da aba
+**Evidências a anexar:** print da aba *Actions* com os jobs verdes (Secret Scan, SAST, SCA e IaC/Container; Dependency Review fica dormente); print da aba
 *Security → Code scanning* com os achados por categoria; print do resumo do
 Dependency Review no PR; screenshot dos artifacts (`gitleaks-report`,
 `semgrep-report`, `sca-reports`, `trivy-reports`) e de um relatório Trivy (`*.txt`).

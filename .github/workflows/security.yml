@@ -134,9 +134,12 @@ jobs:
 
       - name: Instalar Trivy
         run: |
-          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin v0.58.1
-          trivy --version
+          VERSION=0.58.1
+          mkdir -p "$HOME/bin"
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz" \
+            | tar -xz -C "$HOME/bin" trivy
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/trivy" --version
 
       - name: Trivy - vulnerabilidades em dependencias (pom.xml)
         continue-on-error: true
@@ -196,9 +199,12 @@ jobs:
 
       - name: Instalar Trivy
         run: |
-          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin v0.58.1
-          trivy --version
+          VERSION=0.58.1
+          mkdir -p "$HOME/bin"
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz" \
+            | tar -xz -C "$HOME/bin" trivy
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/trivy" --version
 
       - name: Trivy - misconfiguracao de IaC
         continue-on-error: true
@@ -209,9 +215,12 @@ jobs:
             --format table --output trivy-iac.txt .
 
       - name: Build da imagem Docker (sem publicar)
+        id: build
+        continue-on-error: true
         run: docker build -t riva-backend:ci .
 
       - name: Trivy - CVEs na imagem
+        if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
           trivy image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 0 \
@@ -249,18 +258,17 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 5. DEPENDENCY REVIEW - alerta sobre dependencias vulneraveis novas no PR.
-  #    Requer "Dependency graph" habilitado em Settings > Security. Enquanto nao
-  #    estiver, o job roda em modo informativo (continue-on-error).
+  #    Requer "Dependency graph" habilitado em Settings > Code security.
+  #    Fica dormente ate a variavel de repositorio ENABLE_DEPENDENCY_REVIEW=true
+  #    ser criada (Settings > Secrets and variables > Actions > Variables).
   # ---------------------------------------------------------------------------
   dependency-review:
     name: Dependency Review (PR)
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    continue-on-error: true
+    if: github.event_name == 'pull_request' && vars.ENABLE_DEPENDENCY_REVIEW == 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Dependency Review
-        continue-on-error: true
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
