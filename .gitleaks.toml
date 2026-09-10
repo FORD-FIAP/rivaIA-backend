@@ -1,0 +1,42 @@
+# Configuracao do Gitleaks para o RIVA backend.
+# Estende o conjunto de regras padrao e trata os falsos-positivos conhecidos:
+# valores de FALLBACK DE DESENVOLVIMENTO que vivem em application*.properties.
+# Nenhum secret real e versionado - em producao tudo vem de variavel de ambiente
+# (ver SECURITY.md secao 11).
+
+title = "RIVA backend - gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fallbacks de desenvolvimento e material de documentacao - nao sao secrets reais"
+
+paths = [
+  '''src/main/resources/application-dev\.properties''',
+  '''docker-compose\.yml''',
+  '''docs/.*\.md''',
+  '''SECURITY\.md''',
+  '''README\.md''',
+  '''\.gitleaks\.toml''',
+]
+
+regexes = [
+  # Placeholders com prefixo ${VAR:fallback} no application.properties
+  '''defaultDevSecretThatIsAtLeast256BitsLongForHS256Algorithm''',
+  '''devEmailHashSecretAtLeast32CharsLong''',
+  '''devHmacSecretAtLeast32CharsLongForDev''',
+  '''Admin@123456''',
+  # Chave AES de dev (Base64 de "0123456789abcdef0123456789abcdef")
+  '''MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=''',
+  # Banco local do docker-compose de desenvolvimento
+  '''POSTGRES_PASSWORD:\s*riva''',
+  '''datasource\.password=riva''',
+]
+
+stopwords = [
+  "example",
+  "sample",
+  "dummy",
+  "changeme",
+]

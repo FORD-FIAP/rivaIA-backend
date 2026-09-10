@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <!-- Dev e test: saída legível no console, com os campos do MDC visíveis. -->
+    <!-- Caminho dos arquivos de log (sobrescrevivel via variavel de ambiente). -->
+    <property name="LOG_PATH" value="${LOG_PATH:-logs}"/>
+
+    <!-- Dev e test: saida legivel no console, com os campos do MDC visiveis. -->
     <springProfile name="dev,test">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
@@ -16,9 +19,10 @@
         </root>
     </springProfile>
 
-    <!-- Produção: saída JSON estruturada via LogstashEncoder, com os campos do MDC. -->
-    <springProfile name="prod">
-        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <!-- Producao / observabilidade: saida JSON estruturada via LogstashEncoder. -->
+    <springProfile name="prod,obs">
+        <!-- JSON para o stdout (ingestao por ELK/Datadog/CloudWatch no ambiente real). -->
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeMdcKeyName>trace_id</includeMdcKeyName>
                 <includeMdcKeyName>user_id</includeMdcKeyName>
@@ -30,11 +34,37 @@
                     <message>message</message>
                     <thread>thread_name</thread>
                 </fieldNames>
+                <customFields>{"application":"riva-backend"}</customFields>
+            </encoder>
+        </appender>
+
+        <!-- JSON em arquivo rotacionado - consumido pelo Promtail -> Loki -> Grafana. -->
+        <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/riva-backend.json</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/riva-backend-%d{yyyy-MM-dd}.%i.json.gz</fileNamePattern>
+                <maxFileSize>50MB</maxFileSize>
+                <maxHistory>7</maxHistory>
+                <totalSizeCap>1GB</totalSizeCap>
+            </rollingPolicy>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>trace_id</includeMdcKeyName>
+                <includeMdcKeyName>user_id</includeMdcKeyName>
+                <includeMdcKeyName>client_ip</includeMdcKeyName>
+                <fieldNames>
+                    <timestamp>timestamp</timestamp>
+                    <level>level</level>
+                    <logger>logger_name</logger>
+                    <message>message</message>
+                    <thread>thread_name</thread>
+                </fieldNames>
+                <customFields>{"application":"riva-backend"}</customFields>
             </encoder>
         </appender>
 
         <root level="INFO">
-            <appender-ref ref="JSON"/>
+            <appender-ref ref="JSON_CONSOLE"/>
+            <appender-ref ref="JSON_FILE"/>
         </root>
     </springProfile>
 

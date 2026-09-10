@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: riva-backend
+    environment: local
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # Metricas da aplicacao RIVA via Spring Boot Actuator + Micrometer.
+  # A app roda no host (fora do compose) e expoe o Actuator na porta de gestao 9090.
+  - job_name: riva-backend
+    metrics_path: /actuator/prometheus
+    scheme: http
+    static_configs:
+      - targets: ["host.docker.internal:9090"]
+        labels:
+          service: riva-backend
+    # Em dev, sem porta de gestao separada, troque para host.docker.internal:8080.
+
+  # Auto-monitoramento do proprio Prometheus.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

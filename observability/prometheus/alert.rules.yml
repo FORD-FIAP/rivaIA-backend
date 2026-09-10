@@ -1,0 +1,140 @@
+groups:
+  # =========================================================================
+  # Disponibilidade e saude do servico
+  # =========================================================================
+  - name: riva-availability
+    rules:
+      - alert: RivaBackendDown
+        expr: up{job="riva-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: plataforma
+        annotations:
+          summary: "RIVA backend inacessivel"
+          description: "O Prometheus nao consegue coletar metricas de {{ $labels.instance }} ha mais de 1 minuto."
+          runbook: "docs/RUNBOOK_RESPOSTA_INCIDENTES.md#servico-indisponivel"
+
+      - alert: RivaHealthDegraded
+        expr: max_over_time(application_ready_time_seconds[5m]) == 0 and up{job="riva-backend"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RIVA backend respondendo mas sem readiness"
+          description: "Instancia {{ $labels.instance }} nao sinalizou readiness nos ultimos 5m."
+
+  # =========================================================================
+  # Erros de aplicacao
+  # =========================================================================
+  - name: riva-errors
+    rules:
+      - alert: HighHttp5xxRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="riva-backend",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{job="riva-backend"}[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taxa de erros 5xx acima de 5%"
+          description: "{{ $value | humanizePercentage }} das respostas nos ultimos 5m sao 5xx."
+          runbook: "docs/RUNBOOK_RESPOSTA_INCIDENTES.md#erros-5xx"
+
+      - alert: ErrorLogSurge
+        expr: sum(increase(logback_events_total{job="riva-backend",level="error"}[10m])) > 20
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Volume anormal de logs ERROR"
+          description: "{{ $value }} eventos ERROR em 10m. Pode indicar brute force detectado, falha de dependencia ou abuso de API."
+          runbook: "docs/RUNBOOK_RESPOSTA_INCIDENTES.md#surto-de-erros"
+
+  # =========================================================================
+  # Sinais de ataque / abuso (seguranca)
+  # =========================================================================
+  - name: riva-security
+    rules:
+      - alert: AuthLoginFailureSpike
+        expr: sum(rate(http_server_requests_seconds_count{job="riva-backend",uri="/api/v1/auth/login",status="401"}[5m])) * 60 > 30
+        for: 3m
+        labels:
+          severity: warning
+          category: seguranca
+        annotations:
+          summary: "Pico de falhas de login (possivel brute force)"
+          description: "{{ $value | printf \"%.0f\" }} falhas de login/min nos ultimos 5m. Correlacionar com o log 'Possivel brute force detectado' e o IP de origem."
+          runbook: "docs/RUNBOOK_RESPOSTA_INCIDENTES.md#brute-force"
+
+      - alert: RateLimitRejectionSpike
+        expr: sum(rate(http_server_requests_seconds_count{job="riva-backend",status="429"}[5m])) * 60 > 120
+        for: 3m
+        labels:
+          severity: warning
+          category: seguranca
+        annotations:
+          summary: "Muitas respostas 429 (rate limit) - possivel flooding/DoS"
+          description: "{{ $value | printf \"%.0f\" }} respostas 429/min. Verificar se e um unico IP (log WARN do RateLimitFilter) ou distribuido."
+          runbook: "docs/RUNBOOK_RESPOSTA_INCIDENTES.md#flooding-dos"
+
+      - alert: ForbiddenResponseSpike
+        expr: sum(rate(http_server_requests_seconds_count{job="riva-backend",status="403"}[5m])) * 60 > 60
+        for: 5m
+        labels:
+          severity: info
+          category: seguranca
+        annotations:
+          summary: "Pico de 403 - possivel varredura de endpoints protegidos ou HMAC invalido"
+          description: "{{ $value | printf \"%.0f\" }} respostas 403/min. Cruzar com logs de assinatura HMAC invalida e de acesso negado."
+
+      - alert: NotFoundScanSpike
+        expr: sum(rate(http_server_requests_seconds_count{job="riva-backend",status="404"}[5m])) * 60 > 100
+        for: 5m
+        labels:
+          severity: info
+          category: seguranca
+        annotations:
+          summary: "Pico de 404 - possivel scan de superficie"
+          description: "{{ $value | printf \"%.0f\" }} respostas 404/min. O GlobalExceptionHandler ja registra WARN com metodo+URL."
+
+  # =========================================================================
+  # Latencia e recursos
+  # =========================================================================
+  - name: riva-performance
+    rules:
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_server_requests_seconds_bucket{job="riva-backend"}[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia p99 acima de 1s"
+          description: "p99 = {{ $value | printf \"%.2f\" }}s nos ultimos 5m."
+
+      - alert: JvmHeapPressure
+        expr: |
+          sum(jvm_memory_used_bytes{job="riva-backend",area="heap"})
+          /
+          clamp_min(sum(jvm_memory_max_bytes{job="riva-backend",area="heap"}), 1) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso de heap acima de 90%"
+          description: "Heap em {{ $value | humanizePercentage }} da capacidade maxima."
+
+      - alert: HighCpuUsage
+        expr: avg_over_time(process_cpu_usage{job="riva-backend"}[10m]) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU do processo acima de 85%"
+          description: "process_cpu_usage medio = {{ $value | humanizePercentage }} nos ultimos 10m."

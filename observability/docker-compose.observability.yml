@@ -1,0 +1,103 @@
+# Stack de observabilidade do RIVA - Sprint 3 (Observabilidade, Monitoramento e Resposta).
+#
+#   Prometheus   -> coleta as metricas do Actuator (/actuator/prometheus)
+#   Alertmanager -> dispara alertas (e-mail/webhook) a partir das regras
+#   Loki         -> armazena os logs estruturados (JSON) da aplicacao
+#   Promtail     -> envia os arquivos de log para o Loki
+#   Grafana      -> dashboards + exploracao de logs (datasources ja provisionados)
+#
+# Uso:
+#   docker compose -f observability/docker-compose.observability.yml up -d
+#   Grafana:      http://localhost:3001  (admin / admin  - trocar no 1o acesso)
+#   Prometheus:   http://localhost:9091
+#   Alertmanager: http://localhost:9093
+#
+# A aplicacao roda FORA do compose (mvn spring-boot:run). No Linux, rode o
+# compose com:  docker compose ... up -d  e garanta que a app exponha :9090.
+
+name: riva-observability
+
+networks:
+  riva-obs:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: riva-prometheus
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9091:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [riva-obs]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: riva-alertmanager
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    networks: [riva-obs]
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: riva-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks: [riva-obs]
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: riva-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Diretorio onde a aplicacao grava os logs (ajuste conforme seu ambiente)
+      - ../logs:/var/log/riva:ro
+    depends_on: [loki]
+    networks: [riva-obs]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: riva-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on: [prometheus, loki]
+    networks: [riva-obs]
