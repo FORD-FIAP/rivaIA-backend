@@ -15,15 +15,17 @@ alerting:
 
 scrape_configs:
   # Metricas da aplicacao RIVA via Spring Boot Actuator + Micrometer.
-  # A app roda no host (fora do compose) e expoe o Actuator na porta de gestao 9090.
+  # A app roda no host (fora do compose). A porta de gestao 9090 so existe
+  # quando o profile "prod" esta ativo (application-prod.properties); rodando
+  # localmente com dev/obs, o Actuator fica na mesma porta 8080 da API.
   - job_name: riva-backend
     metrics_path: /actuator/prometheus
     scheme: http
     static_configs:
-      - targets: ["host.docker.internal:9090"]
+      - targets: ["host.docker.internal:8080"]
         labels:
           service: riva-backend
-    # Em dev, sem porta de gestao separada, troque para host.docker.internal:8080.
+    # Em producao real (profile "prod"), troque para host.docker.internal:9090.
 
   # Auto-monitoramento do proprio Prometheus.
   - job_name: prometheus

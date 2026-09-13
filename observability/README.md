@@ -13,22 +13,32 @@ e Resposta*). Reúne métricas, logs e alertas num único `docker compose`.
 
 ## Pré-requisitos
 
-- A aplicação precisa expor o Actuator em Prometheus. Isso já está configurado:
-  - **dev**: `http://localhost:8080/actuator/prometheus`
-  - **prod/obs**: porta de gestão separada `9090` → `http://localhost:9090/actuator/prometheus`
-- Logs JSON em arquivo: rode a app com o profile `obs` (ou `prod`), que ativa o
-  appender `JSON_FILE` do [logback-spring.xml](../src/main/resources/logback-spring.xml):
+- A porta de gestão separada `9090` (`application-prod.properties`) só existe
+  quando o profile **`prod`** está ativo — e esse profile aponta pro Postgres
+  da Azure, então não dá pra usar em teste local. **Rodando localmente
+  (`dev`, com ou sem `obs`), o Actuator fica na mesma porta 8080 da API.**
+  Por isso o `prometheus.yml` já vem configurado para `host.docker.internal:8080`.
+- Ative o profile `obs` **junto com** o `dev` (não sozinho — `obs` isolado não
+  tem configuração de banco) para ligar o appender `JSON_FILE` do
+  [logback-spring.xml](../src/main/resources/logback-spring.xml) e gerar o
+  arquivo de log que o Promtail lê:
 
 ```bash
 # na raiz do riva-backend
-SPRING_PROFILES_ACTIVE=obs ./mvnw spring-boot:run
+docker compose up -d                              # sobe o Postgres de dev
+SPRING_PROFILES_ACTIVE=dev,obs ./mvnw spring-boot:run
 # gera logs/riva-backend.json
 ```
 
-> Se rodar só no profile `dev`, ajuste o alvo do Prometheus em
-> [prometheus/prometheus.yml](prometheus/prometheus.yml) para a porta `8080` e
-> note que não haverá arquivo de log para o Promtail (os painéis de métricas
-> continuam funcionando; os painéis de log ficam vazios).
+> No PowerShell (Windows): `$env:SPRING_PROFILES_ACTIVE="dev,obs"` antes do `.\mvnw.cmd spring-boot:run`.
+
+> Se subir só com `dev` (sem `obs`), os painéis de **métricas** continuam
+> funcionando normalmente — só os painéis de **log** (Loki) ficam vazios,
+> porque o appender JSON em arquivo não é ativado.
+
+> Em produção real (profile `prod`), o Actuator vai para a porta `9090` —
+> troque o alvo em [prometheus/prometheus.yml](prometheus/prometheus.yml) de
+> volta para `host.docker.internal:9090` nesse cenário.
 
 ## Subir o stack
 
