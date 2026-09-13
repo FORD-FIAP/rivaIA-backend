@@ -1,0 +1,140 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "title": "RIVA - Seguranca & Observabilidade",
+  "uid": "riva-observability",
+  "tags": ["riva", "seguranca", "devsecops"],
+  "schemaVersion": 39,
+  "version": 1,
+  "templating": { "list": [] },
+  "panels": [
+    { "type": "row", "title": "Visao geral", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "type": "stat", "title": "Servico", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "0": { "text": "FORA DO AR", "color": "red" }, "1": { "text": "NO AR", "color": "green" } } }
+      ] } },
+      "targets": [ { "expr": "up{job=\"riva-backend\"}", "refId": "A" } ]
+    },
+    {
+      "type": "stat", "title": "Requisicoes/s", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 4, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 1 } },
+      "targets": [ { "expr": "sum(rate(http_server_requests_seconds_count{job=\"riva-backend\"}[5m]))", "refId": "A" } ]
+    },
+    {
+      "type": "stat", "title": "Erros 5xx (%)", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 9, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [
+        { "value": null, "color": "green" }, { "value": 0.02, "color": "yellow" }, { "value": 0.05, "color": "red" }
+      ] } }, "overrides": [] },
+      "options": { "colorMode": "background" },
+      "targets": [ { "expr": "sum(rate(http_server_requests_seconds_count{job=\"riva-backend\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{job=\"riva-backend\"}[5m])),0.001)", "refId": "A" } ]
+    },
+    {
+      "type": "stat", "title": "Latencia p99", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3, "thresholds": { "mode": "absolute", "steps": [
+        { "value": null, "color": "green" }, { "value": 0.5, "color": "yellow" }, { "value": 1, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "background" },
+      "targets": [ { "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"riva-backend\"}[5m])) by (le))", "refId": "A" } ]
+    },
+    {
+      "type": "stat", "title": "Logs ERROR (1h)", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 },
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [
+        { "value": null, "color": "green" }, { "value": 5, "color": "yellow" }, { "value": 20, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "targets": [ { "expr": "sum(increase(logback_events_total{job=\"riva-backend\",level=\"error\"}[1h]))", "refId": "A" } ]
+    },
+
+    { "type": "row", "title": "HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 } },
+    {
+      "type": "timeseries", "title": "Requisicoes por status", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } } },
+      "targets": [ { "expr": "sum by (status) (rate(http_server_requests_seconds_count{job=\"riva-backend\"}[5m]))", "legendFormat": "{{status}}", "refId": "A" } ]
+    },
+    {
+      "type": "timeseries", "title": "Latencia HTTP (p50 / p95 / p99)", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"riva-backend\"}[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"riva-backend\"}[5m])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"riva-backend\"}[5m])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+
+    { "type": "row", "title": "Seguranca", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 } },
+    {
+      "type": "timeseries", "title": "Falhas de login /min (401 em /auth/login)", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 20 }, "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 30, "color": "red" } ] } } },
+      "targets": [ { "expr": "sum(rate(http_server_requests_seconds_count{job=\"riva-backend\",uri=\"/api/v1/auth/login\",status=\"401\"}[5m])) * 60", "legendFormat": "falhas/min", "refId": "A" } ]
+    },
+    {
+      "type": "timeseries", "title": "Rate limit 429 /min", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 20 } } },
+      "targets": [ { "expr": "sum(rate(http_server_requests_seconds_count{job=\"riva-backend\",status=\"429\"}[5m])) * 60", "legendFormat": "429/min", "refId": "A" } ]
+    },
+    {
+      "type": "timeseries", "title": "403 / 404 /min (scan / acesso negado)", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 20 } } },
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"riva-backend\",status=\"403\"}[5m])) * 60", "legendFormat": "403/min", "refId": "A" },
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"riva-backend\",status=\"404\"}[5m])) * 60", "legendFormat": "404/min", "refId": "B" }
+      ]
+    },
+    {
+      "type": "logs", "title": "Eventos de seguranca (logs)", "datasource": { "type": "loki" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 22 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [ { "expr": "{job=\"riva-backend\"} |~ \"(?i)brute force|rate limit|assinatura HMAC|acesso negado|scan|Possivel\"", "refId": "A" } ]
+    },
+    {
+      "type": "logs", "title": "Logs de erro (ERROR)", "datasource": { "type": "loki" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 22 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [ { "expr": "{job=\"riva-backend\", level=\"ERROR\"}", "refId": "A" } ]
+    },
+
+    { "type": "row", "title": "Recursos (JVM / processo)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 } },
+    {
+      "type": "timeseries", "title": "Heap usado vs maximo", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "sum(jvm_memory_used_bytes{job=\"riva-backend\",area=\"heap\"})", "legendFormat": "usado", "refId": "A" },
+        { "expr": "sum(jvm_memory_max_bytes{job=\"riva-backend\",area=\"heap\"})", "legendFormat": "maximo", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "CPU (processo / sistema)", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
+      "targets": [
+        { "expr": "process_cpu_usage{job=\"riva-backend\"}", "legendFormat": "processo", "refId": "A" },
+        { "expr": "system_cpu_usage{job=\"riva-backend\"}", "legendFormat": "sistema", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Threads vivas / conexoes HikariCP", "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "expr": "jvm_threads_live_threads{job=\"riva-backend\"}", "legendFormat": "threads", "refId": "A" },
+        { "expr": "hikaricp_connections_active{job=\"riva-backend\"}", "legendFormat": "db ativas", "refId": "B" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+# Mantem o contexto de build minimo e evita vazar arquivos sensiveis/locais
+# para dentro da imagem.
+
+target/
+
+.git/
+.github/
+.mvn/
+
+# Configuracao local / IDE
+.idea/
+.vscode/
+*.iml
+
+# Segredos e ambiente - NUNCA no contexto de build
+.env
+*.env
+.env.*
+*.p12
+*.pem
+*.key
+*.keystore
+
+# Documentacao e observabilidade (nao vao para a imagem da aplicacao)
+docs/
+observability/
+*.md
+
+# Logs e temporarios
+*.log
+logs/

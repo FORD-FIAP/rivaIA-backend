@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <version>3.5.16</version>
         <relativePath/>
     </parent>
 
@@ -20,6 +20,10 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Overrides de seguranca (Sprint 3 / SCA): CVEs corrigidas acima do que
+             o BOM do Spring Boot 3.5.16 traz por padrao. -->
+        <postgresql.version>42.7.12</postgresql.version>
+        <tomcat.version>10.1.59</tomcat.version>
     </properties>
 
     <dependencies>
@@ -34,6 +38,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Observabilidade: Actuator (health, metrics, info) + registro Prometheus.
+             Alimenta o stack de monitoramento (Prometheus/Grafana) da Sprint 3. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -115,7 +131,7 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.6.0</version>
+            <version>2.8.9</version>
         </dependency>
 
         <!-- TestContainers -->

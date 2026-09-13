@@ -1,0 +1,41 @@
+# Roteamento de alertas. Por padrao usa um receiver "null" (apenas registra) para
+# o stack subir sem dependencia externa. Descomente o bloco de e-mail/webhook e
+# preencha os valores (via variavel de ambiente) para notificar de verdade.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = "critical"
+      receiver: default
+      repeat_interval: 1h
+    - matchers:
+        - category = "seguranca"
+      receiver: seguranca
+
+receivers:
+  - name: default
+
+  - name: seguranca
+    # webhook_configs:
+    #   - url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"   # ou Teams/Discord
+    #     send_resolved: true
+    # email_configs:
+    #   - to: "seguranca@riva.example"
+    #     from: "alertmanager@riva.example"
+    #     smarthost: "smtp.example:587"
+    #     auth_username: "alertmanager@riva.example"
+    #     auth_password: "${SMTP_PASSWORD}"
+
+inhibit_rules:
+  # Se o servico esta fora do ar, silencia os alertas derivados (latencia, erros).
+  - source_matchers: [alertname = "RivaBackendDown"]
+    target_matchers: [severity =~ "warning|info"]
+    equal: ["instance"]

@@ -16,9 +16,6 @@ target/
 # VS Code
 .vscode/
 
-# Claude Code (local AI assistant config)
-.claude/
-
 # Variaveis de ambiente (secrets — nunca versionar)
 .env
 *.env

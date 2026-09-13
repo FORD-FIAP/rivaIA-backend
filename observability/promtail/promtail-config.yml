@@ -1,0 +1,43 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Logs JSON estruturados da aplicacao RIVA (perfil prod/obs -> logs/riva-backend.json).
+  - job_name: riva-backend
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: riva-backend
+          service: riva-backend
+          __path__: /var/log/riva/*.json
+    pipeline_stages:
+      # Parseia o JSON e promove campos-chave a labels/campos indexaveis.
+      - json:
+          expressions:
+            level: level
+            logger: logger_name
+            message: message
+            trace_id: trace_id
+            user_id: user_id
+            client_ip: client_ip
+            timestamp: timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+      - labels:
+          level:
+          logger:
+      # Marca eventos de seguranca para consulta rapida no Grafana.
+      - match:
+          selector: '{job="riva-backend"} |~ "(?i)brute force|rate limit|assinatura HMAC|acesso negado|scan"'
+          stages:
+            - static_labels:
+                security_event: "true"

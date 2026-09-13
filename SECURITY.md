@@ -7,6 +7,10 @@ Cobre o escopo da disciplina de **Cybersecurity** do Ford+FIAP 2026 Challenge.
 > rate limiting, CORS, integridade de payload, criptografia em repouso, LGPD,
 > logging estruturado e trilha de auditoria.
 
+> **Sprint 3 — DevSecOps:** a evolução deste trabalho para pipeline de segurança
+> contínua, hardening de infraestrutura, mapeamento OWASP ASVS/API/Mobile e
+> observabilidade está em [docs/SPRINT3_DEVSECOPS.md](docs/SPRINT3_DEVSECOPS.md).
+
 ---
 
 ## 1. Visão geral
