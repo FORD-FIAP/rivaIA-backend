@@ -1,10 +1,10 @@
 package com.ford.riva.service;
 
 import com.ford.riva.crypto.EmailHasher;
+import com.ford.riva.exception.ResourceNotFoundException;
 import com.ford.riva.model.AuditAction;
 import com.ford.riva.model.User;
 import com.ford.riva.repository.UserRepository;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,7 +26,7 @@ public class AnonymizationService {
     @Transactional
     public void anonymizeUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
 
         String anonymizedEmail = DELETED_USERNAME_PREFIX + userId + DELETED_EMAIL_DOMAIN;
 

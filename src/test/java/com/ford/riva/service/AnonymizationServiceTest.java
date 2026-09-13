@@ -1,10 +1,10 @@
 package com.ford.riva.service;
 
 import com.ford.riva.crypto.EmailHasher;
+import com.ford.riva.exception.ResourceNotFoundException;
 import com.ford.riva.model.Role;
 import com.ford.riva.model.User;
 import com.ford.riva.repository.UserRepository;
-import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -87,11 +87,11 @@ class AnonymizationServiceTest {
     }
 
     @Test
-    @DisplayName("lança EntityNotFoundException quando usuário não existe")
+    @DisplayName("lança ResourceNotFoundException quando usuário não existe")
     void throwsWhenNotFound() {
         when(userRepository.findById(any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.anonymizeUser(999L))
-                .isInstanceOf(EntityNotFoundException.class);
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

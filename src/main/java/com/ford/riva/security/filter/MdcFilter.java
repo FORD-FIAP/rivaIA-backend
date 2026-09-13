@@ -1,5 +1,6 @@
 package com.ford.riva.security.filter;
 
+import com.ford.riva.security.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,7 +10,6 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -27,8 +27,13 @@ public class MdcFilter extends OncePerRequestFilter {
     public static final String CLIENT_IP = "client_ip";
     public static final String USER_ID = "user_id";
 
-    private static final String HEADER_FORWARDED_FOR = "X-Forwarded-For";
     private static final int TRACE_ID_LENGTH = 8;
+
+    private final ClientIpResolver clientIpResolver;
+
+    public MdcFilter(ClientIpResolver clientIpResolver) {
+        this.clientIpResolver = clientIpResolver;
+    }
 
     @Override
     protected void doFilterInternal(
@@ -38,7 +43,7 @@ public class MdcFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         try {
             MDC.put(TRACE_ID, generateTraceId());
-            MDC.put(CLIENT_IP, resolveClientIp(request));
+            MDC.put(CLIENT_IP, clientIpResolver.resolve(request));
 
             String userId = resolveUserId();
             if (userId != null) {
@@ -53,14 +58,6 @@ public class MdcFilter extends OncePerRequestFilter {
 
     private String generateTraceId() {
         return UUID.randomUUID().toString().substring(0, TRACE_ID_LENGTH);
-    }
-
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader(HEADER_FORWARDED_FOR);
-        if (StringUtils.hasText(forwardedFor)) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 
     private String resolveUserId() {

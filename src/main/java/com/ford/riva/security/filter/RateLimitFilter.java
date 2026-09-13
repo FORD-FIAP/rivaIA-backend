@@ -3,6 +3,7 @@ package com.ford.riva.security.filter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.riva.config.RateLimitConfig;
 import com.ford.riva.dto.error.ApiErrorResponse;
+import com.ford.riva.security.ClientIpResolver;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import jakarta.servlet.FilterChain;
@@ -13,8 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -29,18 +30,19 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final String LOGIN_PATH = "/api/v1/auth/login";
-    private static final String HEADER_FORWARDED_FOR = "X-Forwarded-For";
     private static final double WARNING_THRESHOLD = 0.2;
 
     private final RateLimitConfig rateLimitConfig;
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIpResolver;
 
     private final Map<String, Bucket> generalBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> authBuckets = new ConcurrentHashMap<>();
 
-    public RateLimitFilter(RateLimitConfig rateLimitConfig, ObjectMapper objectMapper) {
+    public RateLimitFilter(RateLimitConfig rateLimitConfig, ObjectMapper objectMapper, ClientIpResolver clientIpResolver) {
         this.rateLimitConfig = rateLimitConfig;
         this.objectMapper = objectMapper;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @Override
@@ -55,7 +57,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        String clientIp = resolveClientIp(request);
+        String clientIp = clientIpResolver.resolve(request);
         boolean loginAttempt = isLoginEndpoint(request);
 
         Bucket bucket;
@@ -93,12 +95,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 && LOGIN_PATH.equals(request.getRequestURI());
     }
 
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader(HEADER_FORWARDED_FOR);
-        if (StringUtils.hasText(forwardedFor)) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+    /**
+     * Limpa os buckets acumulados por IP periodicamente para evitar
+     * crescimento indefinido dos mapas em memória sob tráfego de longa
+     * duração (um bucket removido simplesmente é recriado com cota cheia
+     * na próxima requisição do IP, sem impacto de segurança).
+     */
+    @Scheduled(fixedRate = 1, timeUnit = java.util.concurrent.TimeUnit.HOURS)
+    void evictStaleBuckets() {
+        generalBuckets.clear();
+        authBuckets.clear();
     }
 
     private void writeTooManyRequests(

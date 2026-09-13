@@ -1,5 +1,6 @@
 package com.ford.riva.security.filter;
 
+import com.ford.riva.security.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MdcFilterTest {
 
-    private final MdcFilter filter = new MdcFilter();
+    private final MdcFilter filter = new MdcFilter(new ClientIpResolver());
 
     @AfterEach
     void clearMdc() {
