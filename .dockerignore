@@ -10,7 +10,6 @@ target/
 # Configuracao local / IDE
 .idea/
 .vscode/
-.claude/
 *.iml
 
 # Segredos e ambiente - NUNCA no contexto de build
