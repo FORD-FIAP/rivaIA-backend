@@ -25,7 +25,7 @@ RUN mvn -B -ntp clean package -DskipTests \
     && cp target/*.jar /build/app.jar
 
 # --- Stage 2: runtime -------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 
 LABEL org.opencontainers.image.title="riva-backend" \
       org.opencontainers.image.description="RIVA - Inteligencia Competitiva Automotiva (Ford + FIAP)" \
