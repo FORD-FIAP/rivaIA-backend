@@ -23,6 +23,62 @@ Este repositório é o **backend**. O foco desta entrega é a **camada de segura
 
 ---
 
+## Arquitetura
+
+```mermaid
+graph TD
+    Client(["Cliente HTTP"])
+
+    subgraph Filters["Filtros de Segurança"]
+        MF["MdcFilter\ntrace_id · client_ip · user_id"]
+        RLF["RateLimitFilter — Bucket4j\n60 req/min · 10/min /login → 429"]
+        JWF["JwtAuthFilter — HS256\nRBAC: ADMIN · ANALYST · USER"]
+        PIF["PayloadIntegrityFilter\nHMAC-SHA256 X-Signature → 403"]
+        MF --> RLF --> JWF --> PIF
+    end
+
+    subgraph Controllers["Controllers (14)"]
+        CA["/api/v1/auth/**\nAuthController"]
+        CV["/api/v1/vehicles/**\nVehicleController"]
+        CU["/api/v1/users/**\nSearch · Comparison"]
+        CB["Brand · Category · Powertrain\nVersion · Specs (Cargo · Dimensions · Safety · Sport · Offroad)"]
+    end
+
+    subgraph Services["Services (19)"]
+        SA["AuthService\nregistro · login · refresh token"]
+        SV["VehicleService\nCRUD + filtros dinâmicos (Criteria API)"]
+        SAU["AuditService\n@Transactional REQUIRES_NEW"]
+        SL["AnonymizationService\nAuditLogRetentionJob — LGPD\nsoft-delete · @Scheduled 03h00 · 90 d"]
+        SO["SearchService · ComparisonService\nBrand · Category · Powertrain · Specs"]
+    end
+
+    subgraph Crypto["Segurança & Criptografia"]
+        CR1["AES-256-GCM — email cifrado em repouso"]
+        CR2["HMAC-SHA256 — blind index de e-mail (busca)"]
+        CR3["BCrypt-12 — hash de senha"]
+        CR4["JWT HS256 — access 30 min · refresh 7 d"]
+        CR5["Validação 4 camadas\n@SafeText · InputSanitizer\nXSS · SQLi · CMDi · Path Traversal"]
+    end
+
+    subgraph Repos["Repositories (Spring Data JPA)"]
+        RU["UserRepository"]
+        RV["VehicleRepository\n+ VehicleSpecification"]
+        RA["AuditLogRepository"]
+        RO["Brand · Category · Powertrain\nComparison · Search · Specs"]
+    end
+
+    DB[("PostgreSQL 16\nDev: Docker localhost:5432\nProd: Azure")]
+
+    Client --> MF
+    PIF --> Controllers
+    Controllers --> Services
+    Services --> Crypto
+    Services --> Repos
+    Repos --> DB
+```
+
+---
+
 ## Pré-requisitos
 
 Para rodar o projeto você precisa apenas de:
