@@ -71,6 +71,7 @@ Definidos em [prometheus/alert.rules.yml](prometheus/alert.rules.yml):
 | Alerta | Disparo | Severidade |
 |---|---|---|
 | `RivaBackendDown` | `up == 0` por 1m | critical |
+| `RivaHealthDegraded` | app no ar sem sinalizar readiness por 5m | warning |
 | `HighHttp5xxRate` | > 5% de 5xx por 5m | critical |
 | `ErrorLogSurge` | > 20 logs ERROR em 10m | warning |
 | `AuthLoginFailureSpike` | > 30 falhas de login/min por 3m | warning (segurança) |
