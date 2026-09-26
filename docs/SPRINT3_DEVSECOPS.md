@@ -425,6 +425,7 @@ Eventos monitorados (regras já existentes no código — ver `SECURITY.md` §10
 | Alerta | Condição | Severidade | Playbook |
 |---|---|---|---|
 | `RivaBackendDown` | `up == 0` por 1m | critical | Runbook §Serviço indisponível |
+| `RivaHealthDegraded` | app no ar (`up`) sem sinalizar readiness por 5m | warning | investigar readiness (banco / dependências) |
 | `HighHttp5xxRate` | > 5% de 5xx por 5m | critical | Runbook §Erros 5xx |
 | `ErrorLogSurge` | > 20 logs ERROR / 10m | warning | Runbook §Surto de erros |
 | `AuthLoginFailureSpike` | > 30 falhas de login/min por 3m | warning (seg.) | Runbook §Brute force |
