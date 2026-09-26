@@ -104,7 +104,11 @@ Implementado com **Bucket4j** (algoritmo token bucket) em
 
 - Um `Bucket` por IP, armazenado em `ConcurrentHashMap<String, Bucket>` (buckets
   separados para tráfego geral e para login).
-- IP resolvido considerando o header `X-Forwarded-For` (suporte a proxy reverso).
+- IP resolvido via [`ClientIpResolver`](src/main/java/com/ford/riva/security/ClientIpResolver.java):
+  o header `X-Forwarded-For` só é confiado quando a conexão direta (`getRemoteAddr`)
+  vem de uma rede interna/confiável (loopback, RFC1918) — o mesmo critério do
+  `internalProxies` padrão do Tomcat. Um cliente externo não consegue forjar o
+  header para burlar o rate limit ou poluir a trilha de auditoria com IP falso.
 - Refill **greedy**: tokens reabastecem continuamente ao longo do minuto.
 - Requests `OPTIONS` (preflight CORS) não são contabilizadas.
 - Ao exceder o limite: resposta **429 Too Many Requests** com:
@@ -161,10 +165,10 @@ Garante que o payload não foi adulterado em trânsito (defesa adicional ao TLS,
 ### Ordem dos filtros de segurança
 
 ```
-RateLimitFilter → JwtAuthenticationFilter → PayloadIntegrityFilter
+MdcFilter → RateLimitFilter → JwtAuthenticationFilter → PayloadIntegrityFilter
 ```
 
-(O `MdcFilter` do Bloco 5 entrará antes de todos.) Os filtros são registrados
+Os filtros são registrados
 apenas dentro da `SecurityFilterChain` — o auto-registro como servlet filter
 global é desativado via `FilterRegistrationBean` com `setEnabled(false)`.
 
@@ -303,7 +307,7 @@ usuários reais do sistema operacional.
 |---|---|
 | Confirmação e acesso (Art. 18, I-II) | `GET /api/v1/users/{id}` (a implementar pelo time) |
 | Retificação (Art. 18, III) | `PUT /api/v1/users/{id}` (a implementar pelo time) |
-| Exclusão (Art. 18, V) | `AnonymizationService.anonymizeUser(id)` |
+| Exclusão (Art. 18, V) | `DELETE /api/v1/users/{id}` (ADMIN) → `AnonymizationService.anonymizeUser(id)` |
 | Portabilidade (Art. 18, V) | Export JSON (a implementar pelo time) |
 
 ### Proteção contra exposição acidental
@@ -414,6 +418,13 @@ expurgo automático das entradas fora da janela.
 são **fallbacks de desenvolvimento**. Em produção, todas as secrets devem vir de
 variáveis de ambiente — nunca commitar secrets reais no repositório.
 
+**Fail-fast em produção:** [`SecurityStartupValidator`](src/main/java/com/ford/riva/config/SecurityStartupValidator.java)
+impede a aplicação de subir com profile `prod` caso `JWT_SECRET`,
+`AES_ENCRYPTION_KEY`, `EMAIL_HASH_SECRET`, `ADMIN_DEFAULT_PASSWORD` (ou
+`HMAC_SECRET`, quando `HMAC_ENABLED=true`) ainda estejam com o valor de
+fallback de desenvolvimento — evita subir em produção "silenciosamente" com um
+segredo conhecido publicamente neste repositório.
+
 ### Rotação de chaves
 
 - **`JWT_SECRET`** — pode ser rotacionada; tokens emitidos com chave antiga deixam de ser
@@ -488,3 +499,35 @@ Notas:
 - `password_hash` é VARCHAR(255) para acomodar BCrypt e marcador `{DELETED}` da anonimização.
 - `audit_logs.ip_address` é VARCHAR(45) para comportar endereços IPv6.
 - `audit_logs.user_id` é nullable — ações anônimas (ex.: login falho) não têm usuário.
+
+---
+
+## 14. Limitações conhecidas
+
+Registradas aqui deliberadamente (auditoria interna de código, ver histórico do
+`feature/sprint3-devsecops`), em vez de omitidas — nenhuma delas é explorável no
+uso normal descrito neste documento, mas ficam como pontos de evolução:
+
+- **HMAC de payload sem proteção a replay**: `PayloadIntegrityFilter` garante
+  integridade (o corpo não foi adulterado), mas a assinatura não inclui timestamp
+  nem nonce — uma requisição capturada com assinatura válida pode ser reenviada.
+  Mitigação futura: incluir `X-Timestamp` no material assinado e rejeitar fora
+  de uma janela curta (ex.: 5 min).
+- **`InputSanitizer.sanitize()`/`sanitizeAndValidate()` não estão plugados no
+  fluxo de requisição** — hoje só `containsAttackPattern()` é usado (via
+  `@SafeText`) para *rejeitar* payloads suspeitos; a normalização/trim/remoção
+  de tags não roda automaticamente em todo input. Não é uma brecha nos
+  endpoints existentes (que usam `@Pattern` allowlist), mas o método fica como
+  utilitário disponível para sanitização explícita quando necessário.
+- **Blocklist de eventos XSS em `InputSanitizer` é enumerativa**, não
+  exaustiva (cobre os handlers mais comuns: `onload`, `onclick`, `onerror`
+  etc.). Não é o único controle — os DTOs que usam `@SafeText` também aplicam
+  `@Pattern` allowlist, que já impede caracteres como `<`/`>`.
+- **CI com gate parcial**: apenas o Secret Scanning (Gitleaks) bloqueia o
+  merge; SAST/SCA/IaC rodam em modo informativo (decisão documentada em
+  `SPRINT3_DEVSECOPS.md` §1.2) — o gate desses achados é a revisão humana, não
+  o pipeline.
+- **Revogação de token não é imediata**: desabilitar um usuário (ou
+  anonimizá-lo via LGPD) impede login e refresh novos, mas um access token já
+  emitido continua válido até expirar (máx. 30 min) — trade-off padrão de JWT
+  stateless sem blocklist de tokens revogados.

@@ -17,7 +17,7 @@ Documento único da entrega de Cybersecurity, **separado por atividade** conform
 Nas sprints anteriores de Cybersecurity a segurança do backend RIVA foi implementada
 como **5 blocos de defesa em profundidade** (validação de entrada, autenticação/RBAC,
 proteção de APIs, criptografia/LGPD, logging/auditoria) e **documentada** no
-[`SECURITY.md`](../SECURITY.md), com **145 testes automatizados** e mapeamento OWASP Top 10.
+[`SECURITY.md`](../SECURITY.md), com **156 testes automatizados** e mapeamento OWASP Top 10.
 
 Esta sprint **evolui esse trabalho para um modelo DevSecOps**: a segurança deixa de ser
 "um documento + código" e passa a ser **parte contínua do ciclo** — verificada a cada
@@ -48,7 +48,7 @@ flowchart TD
 
     subgraph CI["GitHub Actions"]
         direction TB
-        BUILD["CI - Build & Test\ndevelop.yml / production.yml\nmvnw test + package\n(145 testes)"]
+        BUILD["CI - Build & Test\ndevelop.yml / production.yml\nmvnw test + package\n(156 testes)"]
 
         subgraph SEC["security.yml - DevSecOps"]
             direction TB
@@ -318,7 +318,7 @@ Detalhado no [`SECURITY.md`](../SECURITY.md) §8. Resumo:
 
 | Quando | Ação |
 |---|---|
-| A cada commit/PR | SAST (Semgrep), Secret Scanning (Gitleaks), 145 testes automatizados |
+| A cada commit/PR | SAST (Semgrep), Secret Scanning (Gitleaks), 156 testes automatizados |
 | A cada PR | Checklist de segurança no template de PR (ver §3.3 "checklist de PR") |
 | Por sprint | Pentest interno leve: OWASP ZAP em modo baseline contra homologação; revisão manual de um fluxo crítico |
 | Trimestral | Revisão do modelo de ameaças (STRIDE) e do mapeamento ASVS |
@@ -362,7 +362,7 @@ Detalhado no [`SECURITY.md`](../SECURITY.md) §8. Resumo:
 | Pipeline | SCA + Dependabot ativos | ✅ | job `sca` + `dependabot.yml` |
 | Pipeline | IaC e imagem escaneadas | ✅ | job `iac-container-scan` |
 | Pipeline | PR sinaliza dependência vulnerável nova | ✅ | job `dependency-review` (warn-only) |
-| Código | Entrada validada e sanitizada (4 camadas) | ✅ | `InputSanitizer`, DTOs, 145 testes |
+| Código | Entrada validada e sanitizada (4 camadas) | ✅ | `InputSanitizer`, DTOs, 156 testes |
 | Código | AuthN JWT + AuthZ RBAC | ✅ | `security/**`, `SecurityConfig` |
 | Código | Cripto em repouso de PII | ✅ | `crypto/AesEncryptor` |
 | Código | Erros sem vazamento de internals | ✅ | `GlobalExceptionHandler` |
@@ -505,9 +505,9 @@ flowchart LR
 # 1. Testes + build
 ./mvnw -B clean test
 
-# 2. App com observabilidade (gera logs/riva-backend.json e Actuator na 9090)
+# 2. App com observabilidade (gera logs/riva-backend.json; Actuator na 8080 local, 9090 só em prod)
 docker compose up -d                       # Postgres local
-SPRING_PROFILES_ACTIVE=obs ./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev,obs ./mvnw spring-boot:run
 
 # 3. Stack de monitoramento
 docker compose -f observability/docker-compose.observability.yml up -d

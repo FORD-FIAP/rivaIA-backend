@@ -1,5 +1,6 @@
 package com.ford.riva.service;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -63,5 +64,16 @@ public class LoginAttemptService {
     private void purgeExpired(Deque<Instant> failures, Instant now) {
         Instant cutoff = now.minus(WINDOW);
         failures.removeIf(timestamp -> timestamp.isBefore(cutoff));
+    }
+
+    /**
+     * Remove do mapa os IPs sem falhas recentes, evitando crescimento
+     * indefinido da estrutura em memória sob tráfego de longa duração.
+     */
+    @Scheduled(fixedRate = 15, timeUnit = java.util.concurrent.TimeUnit.MINUTES)
+    void evictStaleEntries() {
+        Instant now = Instant.now();
+        failuresByIp.forEach((ip, failures) -> purgeExpired(failures, now));
+        failuresByIp.values().removeIf(Deque::isEmpty);
     }
 }
